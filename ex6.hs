@@ -5,14 +5,23 @@ import Data.Foldable
 import Control.Monad.Trans
 import Control.Monad.Reader
 import Control.Monad.State
---import Control.Monad.Trans.List
 import Control.Monad.Trans.Maybe
 import Control.Monad.Writer
 import Data.Semigroup
-main = do
-        let iParse = (runReaderT (string' "you")) ["cy","dict"]
+import Control.Monad
+import Control.Applicative
+import Data.Char
 
-                in print (runStateT iParse "you you")
+main = do
+        let iParse = (runReaderT (string' "miss")) ["cy","dict"]
+            parserWord = (runReaderT word' ["ringo","george"])
+            parseBeatle = (bTree beatles "Leaf John" )
+                in do 
+                        print (runStateT iParse "this that what")
+                        print (runStateT parserWord "ringo yeah")
+                        print parseBeatle
+                        -- print (parseBeatle)
+
 
 kar :: Show a => [a] -> MaybeT IO a
 kar xs = case xs of 
@@ -68,6 +77,7 @@ sat' :: (Char -> Bool) -> Parser' Char
 sat' pred = do x <- item'
                guard(pred x)
                return x
+
 string' :: String -> Parser' String
 string' (c:[]) = do sat' (c ==)
                     return [c]
@@ -75,32 +85,10 @@ string' (c:cs) = do sat' (c ==)
                     string' cs
                     return (c:cs)
 
---Stuck on word'
---First we need to verify that we correctly understand the behavior we want.
-
---Our impression is that, given an input, the parser should consume the first
---string if that first string is in its dictionary and fail otherwise. 
---Is this correct? 
-
---Our solution gets the dictionary and maps string' over it.
---We expect this to produce a list of (Parser' String) elements which we then fold to create
---a parser that will be successful on any of the elements in the dictionary.
---We believe our issue in implementing this solution is not knowing how to instance Parser' String as a monoid.
-
---instance monoid Parser' String was not accepted by the compiler
---We could use +++ or <|> to implement mappend 
---We believe mempty could just be return 
-
---Solution 2
---For solution 2, it's a recursive strategy. We have our list of valid strings from the dictionary
---that we get from the shared resource. By recursively going into the dictionary, we produce a 
---Parser' String at each step using the head element of the remaining dictionary.
---Upon failure we go deeper into recursion. Upon success, we append the result to a recursive call
---on the remaining string. 
 
 --create 
--- word' :: Parser' String 
--- word' = do {dict <- ask; foldMap string' dict}
+word' :: Parser' String 
+word' = do {dict <- ask; foldMap string' dict}
                  
 instance Monoid (Parser' String) where
   mempty = mzero
@@ -108,8 +96,48 @@ instance Monoid (Parser' String) where
 
 instance Semigroup (Parser' String) where
      (<>) = mappend
+
+
 --4
 data Btree a = Leaf a | Fork (Btree a)  (Btree a) deriving Show
 
-btree :: (Read a, Show a) => [a] -> String -> Btree a
-btree = undefined 
+data Beatle = John | Paul | George | Ringo deriving (Show, Eq, Enum, Bounded, Read)
+beatles = [(John)..(Ringo)]
+
+bTree :: (Read a, Show a) => [a] -> String -> Btree a
+
+bTree dict str = fst $ pullMaybe (runStateT (runReaderT bTreeParser (map show dict)) str )  
+
+pullMaybe (Just a) = a 
+
+bTreeParser :: (Read a, Show a) => Parser' (Btree a)
+bTreeParser = do 
+  pFork `mplus` pLeaf
+
+
+pFork :: (Read a, Show a) => Parser' (Btree a)
+pFork = do 
+  string' "Fork"
+  sat' (== ' ')
+  btree0 <- bTreeParser
+  sat' (== ' ')
+  btree1 <- bTreeParser
+  return $ Fork btree0 btree1
+  `mplus` 
+  do 
+    sat' (== '(')
+    fork0 <- pFork
+    sat' (== ')')
+    return fork0
+pLeaf :: (Read a, Show a) => Parser' (Btree a)
+pLeaf = do
+  string' "Leaf"
+  sat' (== ' ')
+  leafWord <- word'
+  return $ Leaf (read leafWord)
+  `mplus` 
+  do
+    sat' (== '(')
+    leaf0 <- pLeaf
+    sat' (== ')')
+    return leaf0
